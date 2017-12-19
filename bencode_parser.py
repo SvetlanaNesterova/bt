@@ -6,7 +6,8 @@ class BencodeParser:
     def parse(source):
         #if not isinstance(source, str):
         #    raise TypeError()
-        source = [chr(x) for x in source]
+        array = [chr(x) for x in source]
+        source = "".join(array)
         content = []
         index = 0
         while index < len(source):
@@ -106,6 +107,7 @@ class BencodeParser:
 
     @staticmethod
     def _parse_dictionary(source, index):
+        prev = index
         extracted_sequence, index = BencodeParser._parse_sequence(
             source, index, "dictionary")
         dictionary = {}

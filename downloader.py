@@ -27,7 +27,8 @@ class Loader:
         # UnicodeDecodeError: 'utf-8' codec can't decode byte 0xc0 in position 825: invalid start byte
         with open(self.torrent_file_path, 'rb') as meta:
             source = meta.read()
-            print(source)
+            #print(source)
             content = BencodeParser.parse(source)
-            print(content)
+            for key in content[0].keys():
+                print(key + ": " + str(content[0][key]))
 
