@@ -1,0 +1,57 @@
+d
+	8:announce	=>	20:udp://shubt.net:2710
+	13:announce-list	=>	
+		l
+			l
+				20:udp://shubt.net:2710
+			e
+			l
+				31:http://retracker.local/announce
+			e
+			l
+				43:http://tracker.filetracker.pl:8089/announce
+			e
+			l
+				44:http://tracker2.wasabii.com.tw:6969/announce
+			e
+			l
+				40:http://tracker.grepler.com:6969/announce
+			e
+			l
+				35:http://125.227.35.196:6969/announce
+			e
+			l
+				41:http://tracker.tiny-vps.com:6969/announce
+			e
+			l
+				35:http://87.248.186.252:8080/announce
+			e
+			l
+				34:http://210.244.71.25:6969/announce
+			e
+			l
+				33:http://46.4.109.148:6969/announce
+			e
+			l
+				24:udp://46.148.18.250:2710
+			e
+			l
+				37:http://tracker.dler.org:6969/announce
+			e
+			l
+				37:udp://[2001:67c:28f8:92::1111:1]:2710
+			e
+			l
+				37:udp://ipv6.leechers-paradise.org:6969
+			e
+		e
+	7:comment		=>		30:http://rutor.is/torrent/602236
+	10:created by		=>		13:uTorrent/1850
+	13:creation date	=>		i 1513223149 e
+	8:encoding		=>		5:UTF-8
+	4:info	=>
+		d
+			6:length	=>		i 67860208 e
+			4:name		=>		33:Chip в„–1 (СЏРЅРІР°СЂСЊ 2018).pdf
+			12:piece length		=>	i 131072 e
+			6:pieces	10360:‘!<щ7®ЈzE;ЧsЉ|u&ш5Ы,О¶І9CЇ!)|{[wП2о.с9
