@@ -13,7 +13,7 @@ import appdirs   # $ pip install appdirs
 user_data_dir = appdirs.user_data_dir("Название приложения",
                                         "Кто создал")
 
-
+TODO: выделить сущность словаря торрента, с полями info и т.д
 
 протокола BitTorrent v 1.0
 http://www.bittorrent.org/beps/bep_0003.html

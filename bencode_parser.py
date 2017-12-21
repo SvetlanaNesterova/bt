@@ -6,8 +6,15 @@ class BencodeParser:
     def parse(source):
         #if not isinstance(source, str):
         #    raise TypeError()
-        array = [chr(x) for x in source]
-        source = "".join(array)
+        """
+        if not isinstance(source, str):
+            print(type(source))
+            array = [chr(x) for x in source]
+            source = "".join(array)
+        """
+        if isinstance(source, str):
+            source = bytes(source.encode())
+
         content = []
         index = 0
         while index < len(source):
@@ -20,7 +27,7 @@ class BencodeParser:
     def _continue_parsing(source, index):
         if index > len(source):
             return None, index  # плохое возвращаемое значение
-        symbol = source[index]
+        symbol = chr(source[index])
         if symbol == 'i':
             return BencodeParser._parse_int(source, index + 1)
         elif symbol == 'l':
@@ -31,6 +38,7 @@ class BencodeParser:
             return BencodeParser._parse_string(source, index)
         else:
             # более подробно
+            print(len(source))
             raise Exception("Error in bencode: byte № " + str(index) +
                             " value " + str(source[index]))
 
@@ -44,14 +52,16 @@ class BencodeParser:
         number = 0
         mul = 1
         was_digits = False
-        if source[index] == '-':
+        symbol = chr(source[index])
+        if symbol == '-':
             mul = -1
             index += 1
         while index < len(source):
-            if source[index] in DIGITS:
-                number = number * 10 + int(source[index])
+            symbol = chr(source[index])
+            if symbol in DIGITS:
+                number = number * 10 + int(symbol)
                 was_digits = True
-            elif source[index] == end_symbol:
+            elif symbol == end_symbol:
                 break
             else:
                 raise Exception("Error in bencode: incorrect "
@@ -93,7 +103,8 @@ class BencodeParser:
     def _parse_sequence(source, index, name):
         array = []
         while index < len(source):
-            if source[index] == 'e':
+            symbol = chr(source[index])
+            if symbol == 'e':
                 break
             extracted, index = BencodeParser._continue_parsing(
                 source, index)
@@ -120,12 +131,12 @@ class BencodeParser:
                 dictionary[prev_elem] = elem
         if len(extracted_sequence) % 2 == 1:
             raise Exception('Error in bencode: dictionary key "' +
-                            str(extracted_sequence[-1]) + '" has no value')
+                            extracted_sequence[-1].decode() + '" has no value')
         return dictionary, index
 
     @staticmethod
     def _is_key_string(key):
-        if not isinstance(key, str):
+        if not isinstance(key, bytes):
             raise Exception('Error in bencode: key: "' + str(key) +
                             '" is not a string, so it cannot be '
                             'dictionary key')

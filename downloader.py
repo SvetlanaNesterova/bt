@@ -9,6 +9,7 @@ class Loader:
     @staticmethod
     def get_peer_id():
         # Hmmmmm ?!
+        #      "12345678901234567890"
         return "76128987659298765123"
 
     def __init__(self, file_path):
@@ -34,7 +35,9 @@ class Loader:
         self._check_file(self.torrent_file_path)
         self._source = self._read_source_from_file()
         self._content = BencodeParser.parse(self._source)[0]
-        self._get_peers(self._content)
+        tracker_answer = self._get_peers_from_tracker(self._content)
+        peers = self._parse_peers(tracker_answer)
+        self._connect_peers(peers)
 
     def _read_source_from_file(self):
         # кодировка ? utf-8 полетела
@@ -43,16 +46,16 @@ class Loader:
             source = meta.read()
         return source
 
-    def _get_peers(self, content):
+    def _get_peers_from_tracker(self, content):
         tracker_url = content[b"announce"]
         self._info_hash = self._get_info_hash()
         result = self._try_connect_tracker(tracker_url)
-        #if result is not None:
-        #    return result
+        if result is not None:
+            return result
         for tracker_url in content[b"announce-list"]:
             result = self._try_connect_tracker(tracker_url[0])
-        #    if result is not None:
-        #        return result
+            if result is not None:
+                return result
         raise ConnectionError("Failed to connect with any of "
                               "torrent trackers")
 
@@ -90,10 +93,11 @@ class Loader:
                 "event": event,
             }
             try:
-                r = requests.get(tracker_url, params=params)
+                response = requests.get(tracker_url, params=params)
                 try:
-                    self.print_bencode(BencodeParser.parse(r.content))
-                    return r
+                    result = BencodeParser.parse(response.content)
+                    self.print_bencode(result)
+                    return result[0]
                 except Exception as e:
                     print("EXCEPTION")
                     print(e)
@@ -102,6 +106,19 @@ class Loader:
                 print("BAD REQUEST")
                 print(e)
                 return None
+
+    def _parse_peers(self, tracker_answer):
+        peers = []
+        addresses = tracker_answer[b"peers"]
+        for i in range(len(addresses) // 6):
+            peer_info = addresses[i:i + 6]
+            peer_ip = ".".join(str(byte) for byte in peer_info[:4])
+            peer_port = peer_info[4] * 16 + peer_info[5]
+            peers.append((peer_ip, peer_port))
+        return peers
+
+    def _connect_peers(self, peers):
+        pass
 
     def print_bencode(self, obj, depth=0):
         if isinstance(obj, (int, bytes)):
@@ -161,6 +178,7 @@ class Loader:
                 result += '%' + hex_code
         print(result)
         return result
+
 
 
 
