@@ -1,5 +1,6 @@
 from unittest import TestCase
 from downloader import Loader
+from tracker_speaker import _parse_peers
 import os
 
 
@@ -20,3 +21,11 @@ class LoaderTests(TestCase):
         file_name = "Wind.River.2017_HDRip___29735.torrent"
         loader = Loader(os.path.abspath("samples\\" + file_name))
         loader.download()
+
+    def test_parse_peers(self):
+        ans = dict()
+        ans[b"peers"] = b"\x01\x02\x03\x04\x05\x06" \
+                        b"\x07\x08\x09\x0a\x0b\x0c"
+        peers = _parse_peers(ans)
+        expected = [("1.2.3.4", 1286), ("7.8.9.10", 2828)]
+        self.assertListEqual(expected, peers)

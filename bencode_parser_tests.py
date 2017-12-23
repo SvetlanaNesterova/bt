@@ -5,10 +5,10 @@ from bencode_parser import BencodeParser
 
 class BencodeParserTests(TestCase):
     def test_string_parse_correct(self):
-        expected = b"abcde"
-        source = b"5:" + expected
+        expected = "abcde"
+        source = "5:" + expected
         content = BencodeParser.parse(source)
-        self.assertEqual(content[0], expected)
+        self.assertEqual(content[0], expected.encode())
 
     def test_string_parse_empty(self):
         expected = b""

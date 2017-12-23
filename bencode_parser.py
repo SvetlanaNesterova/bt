@@ -4,16 +4,8 @@ DIGITS = [str(x) for x in range(10)]
 class BencodeParser:
     @staticmethod
     def parse(source):
-        #if not isinstance(source, str):
-        #    raise TypeError()
-        """
-        if not isinstance(source, str):
-            print(type(source))
-            array = [chr(x) for x in source]
-            source = "".join(array)
-        """
         if isinstance(source, str):
-            source = bytes(source.encode())
+            source = source.encode()
 
         content = []
         index = 0
@@ -26,7 +18,7 @@ class BencodeParser:
     @staticmethod
     def _continue_parsing(source, index):
         if index > len(source):
-            return None, index  # плохое возвращаемое значение
+            return None, index
         symbol = chr(source[index])
         if symbol == 'i':
             return BencodeParser._parse_int(source, index + 1)
@@ -37,8 +29,6 @@ class BencodeParser:
         elif symbol in DIGITS:
             return BencodeParser._parse_string(source, index)
         else:
-            # более подробно
-            print(len(source))
             raise Exception("Error in bencode: byte № " + str(index) +
                             " value " + str(source[index]))
 
@@ -118,7 +108,6 @@ class BencodeParser:
 
     @staticmethod
     def _parse_dictionary(source, index):
-        prev = index
         extracted_sequence, index = BencodeParser._parse_sequence(
             source, index, "dictionary")
         dictionary = {}
