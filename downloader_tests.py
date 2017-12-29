@@ -1,6 +1,6 @@
 from unittest import TestCase
 from downloader import Loader
-from tracker_speaker import _parse_peers
+from tracker_speaker import _parse_peers_ip_and_port
 import os
 
 
@@ -10,7 +10,6 @@ class LoaderTests(TestCase):
         file.close()
         self.assertRaises(ValueError, Loader, "samples\\1.txt")
         os.remove(os.path.abspath('samples\\1.txt'))
-
 
     def test_parse_torrent(self):
         file_name = ""
@@ -26,6 +25,6 @@ class LoaderTests(TestCase):
         ans = dict()
         ans[b"peers"] = b"\x01\x02\x03\x04\x05\x06" \
                         b"\x07\x08\x09\x0a\x0b\x0c"
-        peers = _parse_peers(ans)
+        peers = _parse_peers_ip_and_port(ans)
         expected = [("1.2.3.4", 1286), ("7.8.9.10", 2828)]
         self.assertListEqual(expected, peers)

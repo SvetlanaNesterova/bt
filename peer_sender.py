@@ -1,15 +1,18 @@
 import socket
+from downloader import Loader
+from peer_speaker_thread import PeerConnection
 from messages import Messages, int_to_four_bytes_big_endian
 
 
 class PeerSender:
-    def __init__(self, peer_address, loader):
+    def __init__(self, peer_address, loader: Loader, peer_connection: PeerConnection):
         self.peer_address = peer_address
+        self._client = peer_connection
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.handshake_msg = bytes([19]) + b"BitTorrent protocol" + \
             b"\x00" * 8 + loader.get_info_hash() + loader.get_peer_id()
 
-    def send_with_length_prefix(self, message):
+    def _send_with_length_prefix(self, message):
         message = int_to_four_bytes_big_endian(len(message)) + message
         self._socket.send(message)
 
@@ -24,6 +27,7 @@ class PeerSender:
                 return False
             if data[:20] != bytes([19]) + b"BitTorrent protocol":
                 return False
+            # TODO: проверить правильность ip и тд
             return True
         except WindowsError as e:
             try:
@@ -32,42 +36,48 @@ class PeerSender:
                 pass
             return False
 
+    # TODO: корректность формы отсылаемых сообщений
     def send_keepalive(self):
-        self.send_with_length_prefix(b"")
+        self._send_with_length_prefix(b"")
 
     def send_choke(self):
-        self.send_with_length_prefix(Messages.choke)
+        self._send_with_length_prefix(Messages.choke)
 
     def send_unchoke(self):
-        self.send_with_length_prefix(Messages.unchoke)
+        self._send_with_length_prefix(Messages.unchoke)
 
     def send_interested(self):
-        self.send_with_length_prefix(Messages.interested)
+        self._send_with_length_prefix(Messages.interested)
 
     def send_not_interested(self):
-        self.send_with_length_prefix(Messages.not_interested)
+        self._send_with_length_prefix(Messages.not_interested)
 
-    def send_have(self, piece_index):
+    def send_have(self, piece_index: int):
         message = Messages.have + int_to_four_bytes_big_endian(piece_index)
-        self.send_with_length_prefix(message)
+        self._send_with_length_prefix(message)
 
     def send_bitfield(self):
-        raise NotImplementedError
+        message = Messages.bitfield + self._client.allocator.get_bitfield()
+        self._send_with_length_prefix(message)
 
     # TODO: обработать кусочки неполной длины
-    def try_send_request(self, piece_index, begin, is_the_last_piece=False):
+    def send_request(self, piece_index: int, begin: int, is_the_last_piece=False):
         message = Messages.request + int_to_four_bytes_big_endian(piece_index) + \
                   int_to_four_bytes_big_endian(begin) + Messages.length
         print("DONE REQUEST")
-        self.send_with_length_prefix(message)
+        self._send_with_length_prefix(message)
 
-    def send_piece(self, piece_index, begin, piece):
+    # TODO: может сам извлечет piece?
+    def send_piece(self, piece_index: int, begin: int, piece: bytes):
         message = int_to_four_bytes_big_endian(piece_index) + \
                   int_to_four_bytes_big_endian(begin) + piece
-        self.send_with_length_prefix(message)
+        self._send_with_length_prefix(message)
 
     # TODO: обработать кусочки неполной длины. Выделить общее?
-    def send_cancel(self, piece_index, begin, is_the_last_piece=False):
+    def send_cancel(self, piece_index: int, begin: int, is_the_last_piece=False):
         message = Messages.cancel + int_to_four_bytes_big_endian(piece_index) + \
                   int_to_four_bytes_big_endian(begin) + Messages.length
-        self.send_with_length_prefix(message)
+        self._send_with_length_prefix(message)
+
+    def get_socket(self):
+        return self._socket

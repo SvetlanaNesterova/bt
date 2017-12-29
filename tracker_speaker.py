@@ -6,7 +6,7 @@ from bencode_translator import BencodeTranslator
 from peer_speaker_thread import PeerConnection
 
 
-def _parse_peers(tracker_answer):
+def _parse_peers_ip_and_port(tracker_answer):
     peers = []
     addresses = tracker_answer[b"peers"]
     for i in range(0, len(addresses), 6):
@@ -32,7 +32,6 @@ class TrackerConnection(threading.Thread):
         threading.Thread.__init__(self)
         self.loader = loader
         self.content = loader._content
-        self.client = TrackerClient()
         self._tracker_url = None
         self.peers_count = 0
         _hash = self.content[b'info'][b'pieces']
@@ -43,25 +42,24 @@ class TrackerConnection(threading.Thread):
 
     def run(self):
         first_answer = self._get_peers_first_time(self.content)
-        peers = _parse_peers(first_answer)
+        peers = _parse_peers_ip_and_port(first_answer)
         self._connect_peers(peers)
+
         # Hmmm? TODO: improve condition
         while self.loader.is_working:
             time.sleep(5)
-            # А нужен ли тут лок?
-            lock = threading.Lock()
+            lock = threading.Lock()  # А нужен ли тут лок?
             lock.acquire()
             if self.peers_count < 50:
                 answer = self._get_peers()
-                peers = _parse_peers(answer)
+                peers = _parse_peers_ip_and_port(answer)
                 self._connect_peers(peers)
             lock.release()
             print("Current peers number: ", self.peers_count)
 
     def _connect_peers(self, peers):
         for peer in peers:
-            _thread = PeerConnection(peer, self.loader,
-                                     self, self.states)
+            _thread = PeerConnection(peer, self.loader, self)
             _thread.start()
 
             lock = threading.Lock()
@@ -132,8 +130,3 @@ class TrackerConnection(threading.Thread):
             print(e)
             return None
 
-
-
-class TrackerClient:
-    def __init__(self):
-        pass

@@ -30,6 +30,7 @@ class Messages:
     b'\7': 'piece',
     b'\x08': 'cancel'
     """
+
     messages_types = {
         0: 'choke',
         1: 'unchoke',
