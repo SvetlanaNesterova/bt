@@ -11,19 +11,18 @@ class PeerReceiver(threading.Thread):
     def run(self):
         while True:
             response_len = bytes_to_int(self._socket.recv(4))
+            mes_len = str(response_len).encode()
             if not response_len:
                 self._connection.close()
                 return
-
-            data = b""
+                response = b""
             while response_len > 0:
                 received = self._socket.recv(min(1024, response_len))
                 if not received:
                     self._connection.close()
                     return
-                response_len -= 1024
-                data += received
-            response = data
+                response_len -= len(received)
+                response += received
 
             if len(response) == 0:
                 message_type = "keepalive"
@@ -33,5 +32,5 @@ class PeerReceiver(threading.Thread):
                 continue
             else:
                 message_type = Messages.messages_types[response[0]]
-
-            self._connection.response_queue.put((message_type, response))
+            print(mes_len + b" Message " + message_type.encode() + b": " + response)
+            self._connection._response_queue.put((message_type, response))

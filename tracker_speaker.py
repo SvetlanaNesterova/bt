@@ -47,10 +47,10 @@ class TrackerConnection(threading.Thread):
 
         # Hmmm? TODO: improve condition
         while self.loader.is_working:
-            time.sleep(5)
+            time.sleep(1)
             lock = threading.Lock()  # А нужен ли тут лок?
             lock.acquire()
-            if self.peers_count < 50:
+            if self.peers_count < 20:
                 answer = self._get_peers()
                 peers = _parse_peers_ip_and_port(answer)
                 self._connect_peers(peers)
@@ -59,7 +59,7 @@ class TrackerConnection(threading.Thread):
 
     def _connect_peers(self, peers):
         for peer in peers:
-            _thread = PeerConnection(peer, self.loader, self)
+            _thread = PeerConnection(peer, self.loader, self, self.loader._allocator)
             _thread.start()
 
             lock = threading.Lock()

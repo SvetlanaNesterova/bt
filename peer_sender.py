@@ -1,12 +1,9 @@
 import socket
-import downloader
-import peer_connection
 from messages import Messages, int_to_four_bytes_big_endian
 
 
 class PeerSender:
-    def __init__(self, peer_address, loader: downloader.Loader,
-                 peer_connection: peer_connection.PeerConnection):
+    def __init__(self, peer_address, loader, peer_connection):
         self.peer_address = peer_address
         self._client = peer_connection
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -37,7 +34,7 @@ class PeerSender:
                 pass
             return False
 
-    # TODO: корректность формы отсылаемых сообщений
+    # TODO: корректность формы отсылаемых сообщений --- вроде ок
     def send_keepalive(self):
         self._send_with_length_prefix(b"")
 
@@ -53,6 +50,7 @@ class PeerSender:
     def send_not_interested(self):
         self._send_with_length_prefix(Messages.not_interested)
 
+    # TODO: когда посылать have
     def send_have(self, piece_index: int):
         message = Messages.have + int_to_four_bytes_big_endian(piece_index)
         self._send_with_length_prefix(message)

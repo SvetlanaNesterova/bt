@@ -1,5 +1,4 @@
 from peer_connection import PeerConnection
-from downloader import Loader
 
 
 class Piece:
@@ -12,13 +11,15 @@ class Piece:
 
 
 class Allocator:
-    def __init__(self, loader: Loader, pieces_count: int):
+    def __init__(self, loader, length: int, piece_length: int):
+        pieces_count = length // piece_length + (1 if length % piece_length > 0 else 1)
         self._loader = loader
-        self.pieces_count = pieces_count
-        size = pieces_count // 8 + 1 if pieces_count % 8 != 0 else 0
+        self.real_pieces_count = pieces_count
+        size = pieces_count // 8 + (1 if pieces_count % 8 != 0 else 0)
+        self.bitfield_pieces_count = size * 8
         self._my_bitfield = bytes(size)
         self._is_empty = True
-        self._pieces = [Piece(i) for i in range(pieces_count)]
+        self._pieces = [Piece(i) for i in range(self.bitfield_pieces_count)]
         self._peers_pieces_info = dict()
 
     def is_bitfield_empty(self):
@@ -50,15 +51,22 @@ class Allocator:
         if len(bitfield) != len(self._my_bitfield):
             print("EXCEPTION: incorrect bitfield len")
             return
-        pieces_info = [False] * (len(self._my_bitfield) * 8)  #  TODO: корректный размер, взять из info-словаря
+        pieces_info = [False] * self.bitfield_pieces_count  #  TODO: корректный размер, взять из info-словаря
         index = 0
         for byte in bitfield:
             value = byte
             for i in range(8):
                 value >>= 1
                 if value & 1 == 1:
-                    pieces_info[index] = True
-                    self._pieces[index].count_in_peers += 1
+                    try:
+                        pieces_info[index] = True
+                        self._pieces[index].count_in_peers += 1
+                    except Exception as e:
+                        print(e)
+                        print(len(pieces_info))
+                        print(len(self._pieces))
+                        print(len(bitfield))
+                        raise e
                 index += 1
         self._peers_pieces_info[peer] = pieces_info
 
@@ -71,6 +79,7 @@ class Allocator:
 
     def save_piece(self, piece_index: int, piece: bytes,
                    peer: PeerConnection):
+        # TODO: полная загрузка кусочка (по количеству)
         self._pieces[piece_index].have = True
         self._pieces[piece_index].saved_piece = piece
         self._my_bitfield[piece_index // 8] |= (1 << (piece_index % 8))

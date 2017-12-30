@@ -37,15 +37,18 @@ class Loader:
             raise TypeError("Loader takes string as file_path")
         self.torrent_file_path = file_path
         _check_file(file_path)
-        source = _read_source_from_file(file_path)
+        source = _read_source_from_file(file_path)                  
         self._content = BencodeParser.parse(source)[0]
         self._tracker = TrackerConnection(self)
-        self._allocator = Allocator(self, self._content[b'length'])
+        length = self._content[b'info'][b'length']
+        piece_length = self._content[b'info'][b'piece length']
+        self._allocator = Allocator(self, length, piece_length)
         # TODO: правильная длина для файла/каталога
         self.is_working = False
         self._info_hash = None
 
     def download(self):
+
         self.is_working = True
         self._tracker.start()
 
