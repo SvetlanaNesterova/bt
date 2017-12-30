@@ -1,6 +1,6 @@
 import os
 from downloader import Loader
-from peer_speaker_thread import PeerConnection
+from peer_connection import PeerConnection
 
 file_name = ""
 #file_name = "Sergey-Kara-Murza-1917-Dve-revolyucii-dva-proekta-2017-FB2.torrent"

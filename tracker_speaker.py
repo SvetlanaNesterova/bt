@@ -3,7 +3,7 @@ import requests
 import threading
 from bencode_parser import BencodeParser
 from bencode_translator import BencodeTranslator
-from peer_speaker_thread import PeerConnection
+from peer_connection import PeerConnection
 
 
 def _parse_peers_ip_and_port(tracker_answer):

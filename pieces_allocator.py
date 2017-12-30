@@ -1,4 +1,4 @@
-from peer_speaker_thread import PeerConnection
+from peer_connection import PeerConnection
 from downloader import Loader
 
 
@@ -27,10 +27,10 @@ class Allocator:
     def get_bitfield(self):
         return self._my_bitfield
 
-    def get_target_piece(self, peer: PeerConnection):
+    def try_get_target_piece(self, peer: PeerConnection):
         if not peer in self._peers_pieces_info.keys():
             print("EXCEPTION: not bitfield info about peer " + str(peer))
-            return
+            return False
         pieces_info = self._peers_pieces_info[peer]
         minimal_count = 1000
         target_piece = -1
@@ -50,7 +50,7 @@ class Allocator:
         if len(bitfield) != len(self._my_bitfield):
             print("EXCEPTION: incorrect bitfield len")
             return
-        pieces_info = [False] * (len(bitfield) * 8)  #  TODO: корректный размер, взять из info-словаря
+        pieces_info = [False] * (len(self._my_bitfield) * 8)  #  TODO: корректный размер, взять из info-словаря
         index = 0
         for byte in bitfield:
             value = byte
@@ -63,6 +63,9 @@ class Allocator:
         self._peers_pieces_info[peer] = pieces_info
 
     def add_have_info(self, piece_index: int, peer: PeerConnection):
+        if peer not in self._peers_pieces_info.keys():
+            self._peers_pieces_info[peer] = [False] * (len(self._my_bitfield) * 8)  # TODO: корректный размер, взять из info-словаря
+
         self._peers_pieces_info[peer][piece_index] = True
         self._pieces[piece_index].count_in_peers += 1
 

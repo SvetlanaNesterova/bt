@@ -1,3 +1,5 @@
+Требуется библотека requests
+
 import hashlib
 h = hashlib.sha1()
 h.update("abcd".encode())

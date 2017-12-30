@@ -1,18 +1,19 @@
 import socket
-from downloader import Loader
-from peer_speaker_thread import PeerConnection
+import downloader
+import peer_connection
 from messages import Messages, int_to_four_bytes_big_endian
 
 
 class PeerSender:
-    def __init__(self, peer_address, loader: Loader, peer_connection: PeerConnection):
+    def __init__(self, peer_address, loader: downloader.Loader,
+                 peer_connection: peer_connection.PeerConnection):
         self.peer_address = peer_address
         self._client = peer_connection
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.handshake_msg = bytes([19]) + b"BitTorrent protocol" + \
             b"\x00" * 8 + loader.get_info_hash() + loader.get_peer_id()
 
-    def _send_with_length_prefix(self, message):
+    def _send_with_length_prefix(self, message: bytes):
         message = int_to_four_bytes_big_endian(len(message)) + message
         self._socket.send(message)
 
@@ -57,14 +58,14 @@ class PeerSender:
         self._send_with_length_prefix(message)
 
     def send_bitfield(self):
-        message = Messages.bitfield + self._client.allocator.get_bitfield()
+        message = Messages.bitfield + self._client._allocator.get_bitfield()
         self._send_with_length_prefix(message)
 
     # TODO: обработать кусочки неполной длины
     def send_request(self, piece_index: int, begin: int, is_the_last_piece=False):
         message = Messages.request + int_to_four_bytes_big_endian(piece_index) + \
                   int_to_four_bytes_big_endian(begin) + Messages.length
-        print("DONE REQUEST")
+        print(b"DONE REQUEST " + message)
         self._send_with_length_prefix(message)
 
     # TODO: может сам извлечет piece?
