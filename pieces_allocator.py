@@ -1,3 +1,4 @@
+from pathlib import Path
 from peer_connection import PeerConnection
 
 
@@ -5,22 +6,35 @@ class Piece:
     def __init__(self, index: int):
         self.index = index
         self.have = False
-        self.saved_piece = None
         self.count_in_peers = 0
         self.downloader = None
 
-
+#TODO: наставить блокировочек
 class Allocator:
     def __init__(self, loader, length: int, piece_length: int):
         pieces_count = length // piece_length + (1 if length % piece_length > 0 else 1)
+        self._length = length
+        self._piece_length = piece_length
         self._loader = loader
         self.real_pieces_count = pieces_count
         size = pieces_count // 8 + (1 if pieces_count % 8 != 0 else 0)
         self.bitfield_pieces_count = size * 8
-        self._my_bitfield = bytes(size)
+        self._my_bitfield = bytearray(size)
         self._is_empty = True
         self._pieces = [Piece(i) for i in range(self.bitfield_pieces_count)]
         self._peers_pieces_info = dict()
+
+        self._file_path = self._loader.get_file_path()
+        self._config_file()
+
+    def _config_file(self):
+        path = Path(self._file_path)
+        if not path.exists():
+            with open(self._file_path, 'ab') as file:
+                for i in range(self.real_pieces_count - 1):
+                    file.write(bytes(self._piece_length))
+                file.write(bytes(self._length % self._piece_length))
+
 
     def is_bitfield_empty(self):
         return self._is_empty
@@ -29,6 +43,12 @@ class Allocator:
         return self._my_bitfield
 
     def try_get_target_piece(self, peer: PeerConnection):
+        """
+        Вернет False, если от пира не поступала информация о имеющихся
+        у него кусочках. Вернет None, если у пира не осталось кусочков,
+        которых клиент не загрузил. Иначе вернет номер кусочка, который
+        нужно загружать у этого пира
+        """
         if not peer in self._peers_pieces_info.keys():
             print("EXCEPTION: not bitfield info about peer " + str(peer))
             return False
@@ -42,7 +62,7 @@ class Allocator:
                     minimal_count = self._pieces[index].count_in_peers
                     target_piece = index
         self._pieces[target_piece].downloader = peer
-        return target_piece
+        return target_piece if target_piece != -1 else None
 
     def add_bitfield_info(self, bitfield: bytes, peer: PeerConnection):
         if peer in self._peers_pieces_info.keys():
@@ -81,21 +101,39 @@ class Allocator:
                    peer: PeerConnection):
         # TODO: полная загрузка кусочка (по количеству)
         self._pieces[piece_index].have = True
-        self._pieces[piece_index].saved_piece = piece
+        self._save_piece_in_file(piece_index, piece)
         self._my_bitfield[piece_index // 8] |= (1 << (piece_index % 8))
         self._is_empty = False
+        for other_peer in self._peers_pieces_info.keys():
+            if other_peer != peer:
+                other_peer.send_have_message(piece_index)
 
-    def try_get_piece(self, piece_index: int, begin: int, length: int,
-                      peer: PeerConnection):
+    def try_get_piece_segment(self, piece_index: int, begin: int, length: int,
+                              peer: PeerConnection):
         piece = self._pieces[piece_index]
         if piece.have:
-            return piece.saved_piece[begin:begin + length]
+            return self._get_piece_segment_from_file(piece_index, begin, length)
         else:
             return False
 
     def remove_peer(self, peer: PeerConnection):
+        if peer not in self._peers_pieces_info.keys():
+            return
         piece_info = self._peers_pieces_info[peer]
         for index in range(len(piece_info)):
             if piece_info[index]:
                 self._pieces[index].count_in_peers -= 1
         self._peers_pieces_info.pop(peer)
+
+    def _get_piece_segment_from_file(self, piece_index, begin, length):
+        with open(self._file_path, 'rb') as file:
+            start = piece_index * self._piece_length + begin
+            file.seek(start)
+            segment = file.read(length)
+            return segment
+
+    def _save_piece_in_file(self, piece_index, piece):
+        with open(self._file_path, 'ab') as file:
+            start = piece_index * self._piece_length
+            file.seek(start)
+            file.write(piece)

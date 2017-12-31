@@ -1,9 +1,18 @@
+import hashlib
+
+
 def int_to_four_bytes_big_endian(number):
     return number.to_bytes(4, byteorder='big')
 
 
 def bytes_to_int(_bytes):
     return int.from_bytes(_bytes, byteorder='big')
+
+
+def get_sha_1_hash(source):
+    hasher = hashlib.sha1()
+    hasher.update(source)
+    return hasher.digest()
 
 
 class Messages:
@@ -42,4 +51,3 @@ class Messages:
         7: 'piece',
         8: 'cancel'
     }
-

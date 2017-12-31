@@ -47,7 +47,7 @@ class TrackerConnection(threading.Thread):
 
         # Hmmm? TODO: improve condition
         while self.loader.is_working:
-            time.sleep(1)
+            time.sleep(5)
             lock = threading.Lock()  # А нужен ли тут лок?
             lock.acquire()
             if self.peers_count < 20:

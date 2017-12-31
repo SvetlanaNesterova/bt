@@ -29,6 +29,7 @@ class BencodeParser:
         elif symbol in DIGITS:
             return BencodeParser._parse_string(source, index)
         else:
+            print(source)
             raise Exception("Error in bencode: byte № " + str(index) +
                             " value " + str(source[index]))
 

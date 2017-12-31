@@ -1,10 +1,9 @@
-import time
 import queue
 import threading
 import datetime
 from peer_sender import PeerSender
 from peer_receiver import PeerReceiver
-from messages import bytes_to_int, Messages
+from messages import bytes_to_int, Messages, get_sha_1_hash
 
 BITFIELD_TIMEOUT_SEC = 2
 KEEPALIVE_TIMEOUT_SEC = 120
@@ -14,6 +13,9 @@ KEEPALIVE_TIMEOUT_SEC = 120
 class PeerConnection(threading.Thread):
     def __init__(self, peer_address: tuple, loader, tracker_connection, allocator):
         threading.Thread.__init__(self)
+        self.log_file_name = "logs\\" + "_".join(peer_address[0].split('.')) + ".txt"
+        #with open(self.log_file_name, 'w') as file:
+        #    file.write("STARTED")
         self.peer_address = peer_address
         self.loader = loader
         self.tracker = tracker_connection  # TODO: отделить пир от трекера;
@@ -57,6 +59,7 @@ class PeerConnection(threading.Thread):
         lock.acquire()
         self.tracker.peers_count -= 1
         lock.release()
+        self._allocator.remove_peer(self)
 
     def run(self):
         if not self._sender.try_handshake():
@@ -110,13 +113,15 @@ class PeerConnection(threading.Thread):
             try:
                 message_type, response = self._response_queue.get_nowait()
                 self.react[message_type](response)
+                with open(self.log_file_name, 'ab') as file:
+                    file.write(message_type.encode() + b" " + response + b"\n")
             except queue.Empty:
                 return
 
     def _send_haves(self):
         while True:
             try:
-                piece_index = self._response_queue.get_nowait()
+                piece_index = self._have_message_queue.get_nowait()
                 self._sender.send_have(piece_index)
             except queue.Empty:
                 return
@@ -164,18 +169,29 @@ class PeerConnection(threading.Thread):
         piece_index = bytes_to_int(response[1:5])
         begin = bytes_to_int(response[5:9])
         length = bytes_to_int(response[9:13])
-        piece = self._allocator.try_get_piece(piece_index, begin, length, self)
+        piece = self._allocator.try_get_piece_segment(piece_index, begin, length, self)
+        # TODO: сделать очередь
         if piece is not None:
             self._sender.send_piece(piece_index, begin, piece)
 
     def _react_piece(self, response: bytes):
-        print(response)
         piece_index = bytes_to_int(response[1:5])
         begin = bytes_to_int(response[5:9])
         piece = response[9:]
         if piece_index == self._target_piece_index and self._target_begin == begin:
             self._storage += piece  # ???
             self._target_begin = begin + bytes_to_int(Messages.length)
+            if self._target_begin >= self.loader.get_piece_length():
+                _hash = get_sha_1_hash(self._storage)
+                expected_hash = self.loader.get_piece_hash(piece_index)
+                if _hash == expected_hash:
+                    self._allocator.save_piece(piece_index, self._storage, self)
+                    print("SAVED GOOD PIECE!!!!!!" + str(self.peer_address))
+                    self._target_begin = 0
+                    self._target_piece_index = self._allocator\
+                        .try_get_target_piece(self)
+                    if self._target_piece_index is None:
+                        self.close()
         self._state = "send_request"
 
     def _react_cancel(self, response: bytes):
@@ -186,7 +202,7 @@ class PeerConnection(threading.Thread):
         begin = bytes_to_int(response[5:9])
         length = bytes_to_int(response[9:13])
         # TODO: что точно надо сделать для отмены отправления? --- А есть ли что отменять?
-        for elem in self.to_send:
-            if elem == (piece_index, begin, length):
+        #for elem in self.to_send:
+        #    if elem == (piece_index, begin, length):
         #        self.to_send.remove(elem)
-                return
+        #        return

@@ -63,7 +63,7 @@ class PeerSender:
     def send_request(self, piece_index: int, begin: int, is_the_last_piece=False):
         message = Messages.request + int_to_four_bytes_big_endian(piece_index) + \
                   int_to_four_bytes_big_endian(begin) + Messages.length
-        print(b"DONE REQUEST " + message)
+        #print(b"DONE REQUEST " + message)
         self._send_with_length_prefix(message)
 
     # TODO: может сам извлечет piece?

@@ -15,7 +15,7 @@ class PeerReceiver(threading.Thread):
             if not response_len:
                 self._connection.close()
                 return
-                response = b""
+            response = b""
             while response_len > 0:
                 received = self._socket.recv(min(1024, response_len))
                 if not received:
@@ -32,5 +32,6 @@ class PeerReceiver(threading.Thread):
                 continue
             else:
                 message_type = Messages.messages_types[response[0]]
-            print(mes_len + b" Message " + message_type.encode() + b": " + response)
+            #print(mes_len + b" Message " + message_type.encode() + b" from " +
+            #      str(self._connection.peer_address).encode())
             self._connection._response_queue.put((message_type, response))
