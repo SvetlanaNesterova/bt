@@ -31,21 +31,17 @@ class TrackerConnection(threading.Thread):
     def __init__(self, loader):
         threading.Thread.__init__(self)
         self.loader = loader
-        self.content = loader._content
         self._tracker_url = None
         self.peers_count = 0
-        _hash = self.content[b'info'][b'pieces']
-        self._hashes = [_hash[i:i + 20] for i in range(0, len(_hash), 20)]
-        self.states = [PieceState(i, self._hashes[i])
-                  for i in range(len(self._hashes))]
-
+        _hashes = self.loader.torrent.pieces_hashes
+        self.states = [PieceState(i, _hashes[i]) for i in range(len(_hashes))]
 
     def run(self):
-        first_answer = self._get_peers_first_time(self.content)
+        first_answer = self._get_peers_first_time()
         peers = _parse_peers_ip_and_port(first_answer)
         self._connect_peers(peers)
 
-        # Hmmm? TODO: improve condition
+        # Hmmm? TODO: правильное отслеживание количества пиров и ведение отчетности
         while self.loader.is_working:
             time.sleep(5)
             lock = threading.Lock()  # А нужен ли тут лок?
@@ -59,7 +55,7 @@ class TrackerConnection(threading.Thread):
 
     def _connect_peers(self, peers):
         for peer in peers:
-            _thread = PeerConnection(peer, self.loader, self, self.loader._allocator)
+            _thread = PeerConnection(peer, self.loader, self, self.loader.allocator)
             _thread.start()
 
             lock = threading.Lock()
@@ -67,10 +63,10 @@ class TrackerConnection(threading.Thread):
             self.peers_count += 1
             lock.release()
 
-    def _get_peers_first_time(self, content):
-        urls = [[content[b"announce"]]] + content[b"announce-list"]
+    def _get_peers_first_time(self):
+        urls = self.loader.torrent.announce_list
         for tracker_url in urls:
-            result = self._try_connect_tracker_first_time(tracker_url[0])
+            result = self._try_connect_tracker_first_time(tracker_url)
             if result is not None:
                 return result
         raise ConnectionError("Failed to connect with any of "
@@ -84,30 +80,29 @@ class TrackerConnection(threading.Thread):
             pass
         elif tracker_url.startswith(b"http"):
             print("Try " + str(tracker_url))
-            #ip =
-            left = str(self.loader._content[b'info'][b'piece length'] * \
-                   self.loader._content[b'info'][b'length'])
+            # ip =
+            left = self.loader.allocator.get_left_bytes_count()
             params = {
-                "info_hash": self.loader.get_info_hash(),
+                "info_hash": self.loader.torrent.info_hash,
                 "peer_id": self.loader.get_peer_id(),
                 "port": 6889,  # попробовать другие
                 "uploaded": "0",
                 "downloaded": "0",
-                "left": left,
+                "left": str(left),
                 "event": "started",
             }
             return self._connect_http(tracker_url, params)
 
     def _try_connect_tracker_for_more_peers(self):
-        left = str(self.loader._content[b'info'][b'piece length'] * \
-                   self.loader._content[b'info'][b'length'])
+        left = self.loader.allocator.get_left_bytes_count()
+        downloaded = self.loader.torrent.length - left
         params = {
-            "info_hash": self.loader.get_info_hash(),
+            "info_hash": self.loader.torrent.info_hash,
             "peer_id": self.loader.get_peer_id(),
             "port": 6889,  # попробовать другие
             "uploaded": "0",  # TODO: скорректировать текущие цифры
-            "downloaded": "0",
-            "left": left,
+            "downloaded": str(downloaded),
+            "left": str(left),
             "numwant": 10
         }
         return self._connect_http(self._tracker_url, params)
@@ -129,4 +124,3 @@ class TrackerConnection(threading.Thread):
             print("BAD REQUEST")
             print(e)
             return None
-

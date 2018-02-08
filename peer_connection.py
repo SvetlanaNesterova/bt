@@ -13,9 +13,6 @@ KEEPALIVE_TIMEOUT_SEC = 120
 class PeerConnection(threading.Thread):
     def __init__(self, peer_address: tuple, loader, tracker_connection, allocator):
         threading.Thread.__init__(self)
-        self.log_file_name = "logs\\" + "_".join(peer_address[0].split('.')) + ".txt"
-        #with open(self.log_file_name, 'w') as file:
-        #    file.write("STARTED")
         self.peer_address = peer_address
         self.loader = loader
         self.tracker = tracker_connection  # TODO: отделить пир от трекера;
@@ -31,6 +28,8 @@ class PeerConnection(threading.Thread):
 
         self._target_piece_index = None
         self._target_begin = 0
+        self._target_piece_length = None
+        self._target_segment_length = None
         self._storage = b""
         self._state = "start"
         self._received_bitfield = False
@@ -64,14 +63,10 @@ class PeerConnection(threading.Thread):
     def run(self):
         if not self._sender.try_handshake():
             self._delete_peer_from_list()
-            print("NO HANDSHAKE")
             return
-        print("Good handshake")
-
         self._receiver = PeerReceiver(self._socket, self)
         self._receiver.start()
-        last_keepalive_time = datetime.datetime.now()
-        start_time = -1
+        start_time = last_keepalive_time = datetime.datetime.now()
         while True:
             self._check_input_messages()
             self._send_haves()
@@ -85,21 +80,22 @@ class PeerConnection(threading.Thread):
             if self._state == "start":
                 self._greet()
                 self._state = "wait_bitfield"
-                start_time = datetime.datetime.now()
             elif self._state == "wait_bitfield":
                 if self._received_bitfield:
-                    self._state = "send_request"
-                    self._target_piece_index = self._allocator.try_get_target_piece(self)
-                    continue
-                time_span = (datetime.datetime.now() - start_time)\
-                    .total_seconds()
+                    self._state = "need_target"
+                time_span = (datetime.datetime.now() - start_time).total_seconds()
                 if time_span > BITFIELD_TIMEOUT_SEC:
                     print("EXEPTION: no bitfield was sent from peer " + str(self)
                           + " " + str(self.peer_address))
                     self.close()
+            elif self._state == "need_target":
+                if self._try_get_new_target():
+                    self._state = "send_request"
+                else:
+                    self.close()
+                    #break             ???????????????
             elif self._state == "send_request" and not self.peer_choking:
-                self._sender.send_request(
-                    self._target_piece_index, self._target_begin)
+                self._make_request()
                 self._state = "wait_piece"
 
             time_span = (datetime.datetime.now() - last_keepalive_time).total_seconds()
@@ -108,13 +104,18 @@ class PeerConnection(threading.Thread):
                 self._sender.send_interested()
                 last_keepalive_time = datetime.datetime.now()
 
+    def _greet(self):
+        if not self._allocator.is_bitfield_empty():
+            self._sender.send_bitfield()
+        self._sender.send_unchoke()
+        self._sender.send_interested()
+
     def _check_input_messages(self):
         while True:
             try:
                 message_type, response = self._response_queue.get_nowait()
                 self.react[message_type](response)
-                with open(self.log_file_name, 'ab') as file:
-                    file.write(message_type.encode() + b" " + response + b"\n")
+                #print(message_type.encode() + b" " + response + b"\n")
             except queue.Empty:
                 return
 
@@ -126,18 +127,29 @@ class PeerConnection(threading.Thread):
             except queue.Empty:
                 return
 
-    def _greet(self):
-        if not self._allocator.is_bitfield_empty():
-            self._sender.send_bitfield()
-        self._sender.send_unchoke()
-        self._sender.send_interested()
-
     def send_have_message(self, piece_index: int):
         self._have_message_queue.put(piece_index)
 
     def close(self):
         print("Close")
         self._was_closed = True
+
+    def _try_get_new_target(self):
+        target = self._allocator.try_get_target_piece_and_length(self)
+        if target:
+            self._target_piece_index = target[0]
+            self._target_piece_length = target[1]
+            self._target_segment_length = min(
+                self._target_piece_length,
+                Messages.piece_segment_length)
+            return  True
+        return False
+
+    def _make_request(self):
+        self._sender.send_request(
+            self._target_piece_index,
+            self._target_begin,
+            self._target_segment_length)
 
     # TODO: проверка длины сообщения? нужна вроде бы
     def _react_keepalive(self, response: bytes):
@@ -166,33 +178,42 @@ class PeerConnection(threading.Thread):
         if len(response) != 13:
             print("EXCEPTION! len of request peer message is incorrect: " +
                   response.decode())
+
         piece_index = bytes_to_int(response[1:5])
         begin = bytes_to_int(response[5:9])
         length = bytes_to_int(response[9:13])
+
         piece = self._allocator.try_get_piece_segment(piece_index, begin, length, self)
         # TODO: сделать очередь
-        if piece is not None:
+        if piece:
             self._sender.send_piece(piece_index, begin, piece)
 
     def _react_piece(self, response: bytes):
         piece_index = bytes_to_int(response[1:5])
         begin = bytes_to_int(response[5:9])
         piece = response[9:]
-        if piece_index == self._target_piece_index and self._target_begin == begin:
-            self._storage += piece  # ???
-            self._target_begin = begin + bytes_to_int(Messages.length)
-            if self._target_begin >= self.loader.get_piece_length():
+
+        if piece_index == self._target_piece_index and \
+                self._target_begin == begin and \
+                self._target_segment_length == len(piece):
+
+            self._storage += piece
+            self._target_begin = begin + self._target_segment_length
+            self._target_segment_length = min(self._target_piece_length - self._target_begin,
+                            Messages.piece_segment_length)
+            self._state = "send_request"
+
+            if self._target_begin == self._target_piece_length:
                 _hash = get_sha_1_hash(self._storage)
                 expected_hash = self.loader.get_piece_hash(piece_index)
                 if _hash == expected_hash:
                     self._allocator.save_piece(piece_index, self._storage, self)
                     print("SAVED GOOD PIECE!!!!!!" + str(self.peer_address))
-                    self._target_begin = 0
-                    self._target_piece_index = self._allocator\
-                        .try_get_target_piece(self)
-                    if self._target_piece_index is None:
-                        self.close()
-        self._state = "send_request"
+                    self._state = "wait_target"
+                    return
+                else:
+                    # Если хэш не совпал
+                    pass
 
     def _react_cancel(self, response: bytes):
         if len(response) != 13:

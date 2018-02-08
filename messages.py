@@ -26,7 +26,7 @@ class Messages:
     piece = b'\7'
     cancel = b'\x08'
 
-    length = int_to_four_bytes_big_endian(2**14)
+    piece_segment_length = 2 ** 14
 
     """
     b'\0': 'choke',

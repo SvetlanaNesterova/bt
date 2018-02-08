@@ -8,7 +8,7 @@ class PeerSender:
         self._client = peer_connection
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.handshake_msg = bytes([19]) + b"BitTorrent protocol" + \
-            b"\x00" * 8 + loader.get_info_hash() + loader.get_peer_id()
+            b"\x00" * 8 + loader.torrent.info_hash + loader.get_peer_id()
 
     def _send_with_length_prefix(self, message: bytes):
         message = int_to_four_bytes_big_endian(len(message)) + message
@@ -60,9 +60,11 @@ class PeerSender:
         self._send_with_length_prefix(message)
 
     # TODO: обработать кусочки неполной длины
-    def send_request(self, piece_index: int, begin: int, is_the_last_piece=False):
-        message = Messages.request + int_to_four_bytes_big_endian(piece_index) + \
-                  int_to_four_bytes_big_endian(begin) + Messages.length
+    def send_request(self, piece_index: int, begin: int, length: int):
+        message = Messages.request + \
+                  int_to_four_bytes_big_endian(piece_index) + \
+                  int_to_four_bytes_big_endian(begin) + \
+                  int_to_four_bytes_big_endian(length)
         #print(b"DONE REQUEST " + message)
         self._send_with_length_prefix(message)
 
@@ -73,9 +75,11 @@ class PeerSender:
         self._send_with_length_prefix(message)
 
     # TODO: обработать кусочки неполной длины. Выделить общее?
-    def send_cancel(self, piece_index: int, begin: int, is_the_last_piece=False):
-        message = Messages.cancel + int_to_four_bytes_big_endian(piece_index) + \
-                  int_to_four_bytes_big_endian(begin) + Messages.length
+    def send_cancel(self, piece_index: int, begin: int, length: int):
+        message = Messages.cancel + \
+                  int_to_four_bytes_big_endian(piece_index) + \
+                  int_to_four_bytes_big_endian(begin) + \
+                  int_to_four_bytes_big_endian(length)
         self._send_with_length_prefix(message)
 
     def get_socket(self):
