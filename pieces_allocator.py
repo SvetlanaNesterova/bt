@@ -1,6 +1,6 @@
-from peer_connection import PeerConnection
+from peer import PeerConnection
 from data_storage import DataStorage
-from torrent_meta import TorrentMeta
+from torrent_info import TorrentMeta
 
 class Piece:
     def __init__(self, index: int):

@@ -5,6 +5,7 @@ h = hashlib.sha1()
 h.update("abcd".encode())
 h.digest()
 
+TODO: IPv6
 
 Если вы хотите найти место куда пользовательские
 данные можно положить, то appdirs модуль предоставляет
@@ -20,6 +21,8 @@ http://www.bittorrent.org/beps/bep_0003.html
 
 протокола BitTorrent v 1.0
 http://www.bittorrent.org/beps/bep_0003.html
+UDP tracker protocol
+http://www.bittorrent.org/beps/bep_0015.html
 
 
 Exception in thread Thread-3:

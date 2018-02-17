@@ -1,5 +1,5 @@
-from messages import get_sha_1_hash
-from bencode_translator import BencodeTranslator
+import hashlib
+from bencode import BencodeTranslator
 
 
 class TorrentMeta:
@@ -49,11 +49,11 @@ class TorrentMeta:
             self.length = self._info[b"length"]
             self.dir_name = b""
             self.files = [FileRecord(
-                {b"length": self.length, b"path": [self.file_name]})]
+                {b"length": self.length, b"path": [self.file_name]}, 0)]
         else:
             self.is_many_files = True
             ### ?????????????
-            self.dir_name = b"//" + self._info[b"name"]
+            self.dir_name = b"\\" + self._info[b"name"]
             self.length = 0
             self.files = []
             for record in self._info[b"files"]:
@@ -74,3 +74,55 @@ class FileRecord:
             self.md5sum = record[b"md5sum"]
         else:
             self.md5sum = None
+
+
+def int_to_four_bytes_big_endian(number):
+    return number.to_bytes(4, byteorder='big')
+
+
+def bytes_to_int(_bytes):
+    return int.from_bytes(_bytes, byteorder='big')
+
+
+def get_sha_1_hash(source):
+    hasher = hashlib.sha1()
+    hasher.update(source)
+    return hasher.digest()
+
+
+class Messages:
+    choke = b'\0'
+    unchoke = b'\1'
+    interested = b'\2'
+    not_interested = b'\3'
+    have = b'\4'
+    bitfield = b'\5'
+    request = b'\6'
+    piece = b'\7'
+    cancel = b'\x08'
+
+    piece_segment_length = 2 ** 14
+
+    """
+    b'\0': 'choke',
+    b'\1': 'unchoke',
+    b'\2': 'interested',
+    b'\3': 'not_interested',
+    b'\4': 'have',
+    b'\5': 'bitfield',
+    b'\6': 'request',
+    b'\7': 'piece',
+    b'\x08': 'cancel'
+    """
+
+    messages_types = {
+        0: 'choke',
+        1: 'unchoke',
+        2: 'interested',
+        3: 'not_interested',
+        4: 'have',
+        5: 'bitfield',
+        6: 'request',
+        7: 'piece',
+        8: 'cancel'
+    }

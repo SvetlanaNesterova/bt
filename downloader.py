@@ -1,10 +1,9 @@
 from pathlib import Path
 
-from bencode_parser import BencodeParser
-from bencode_translator import BencodeTranslator
-from tracker_speaker import TrackerConnection
+from bencode import BencodeParser, BencodeTranslator
+from tracker_speaker import TrackersConnector
 from pieces_allocator import Allocator
-from torrent_meta import TorrentMeta
+from torrent_info import TorrentMeta
 
 
 def _check_file_correctness(file_path: str):
@@ -43,17 +42,13 @@ class Loader:
         self.torrent = TorrentMeta(content)
         ######
         BencodeTranslator.print_bencode(content)
-        self._tracker = TrackerConnection(self)
+        self._trackers = TrackersConnector(self)
         self.allocator = Allocator(self.torrent, self.get_root_dir_path())
-        # TODO: правильная длина для файла/каталога
         self.is_working = False
 
     def download(self):
         self.is_working = True
-        self._tracker.start()
-
-    def get_tracker(self):
-        return self._tracker
+        self._trackers.start()
 
     def get_piece_hash(self, piece_index: int):
         #    return self._content[b'info'][b'pieces'][
@@ -61,4 +56,4 @@ class Loader:
         return self.torrent.pieces_hashes[piece_index]
 
     def get_root_dir_path(self):
-        return self.save_directory_path + "//"
+        return self.save_directory_path

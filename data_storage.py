@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from torrent_meta import TorrentMeta, FileRecord
+from torrent_info import TorrentMeta, FileRecord
 
 class DataStorage:
     def __init__(self, torrent, root_dir_path):
