@@ -18,7 +18,7 @@ class PeerConnection(threading.Thread):
         self.tracker = tracker_connection  # TODO: отделить пир от трекера;
                                 # TODO: сделать контроль за количеством пиров
         self._allocator = allocator
-        self.react = self._get_reactions()
+        self.react = self._set_reactions()
         self._sender = PeerSender(peer_address, loader, self)
         self._socket = self._sender.get_socket()
         self._receiver = None
@@ -39,7 +39,7 @@ class PeerConnection(threading.Thread):
         self.peer_choking = True
         self.peer_interested = False
 
-    def _get_reactions(self):
+    def _set_reactions(self):
         reactions = dict()
         reactions['keepalive'] = self._react_keepalive
         reactions['choke'] = self._react_choke
@@ -54,7 +54,7 @@ class PeerConnection(threading.Thread):
         return reactions
 
     def _delete_peer_from_list(self):
-        self.tracker.decrease_peers_count()
+        self.tracker.decrease_peers_count(self)
         self._allocator.remove_peer(self)
 
     def run(self):
@@ -64,16 +64,19 @@ class PeerConnection(threading.Thread):
         self._receiver = PeerReceiver(self._socket, self)
         self._receiver.start()
         start_time = last_keepalive_time = datetime.datetime.now()
+        last_state = self._state
         while True:
             self._check_input_messages()
             self._send_haves()
 
+            if self._state != last_state:
+                #print(self._state + self.name)
+                last_state = self._state
             if self._was_closed:
                 self._delete_peer_from_list()
                 self._socket.close()
                 print("CLOSED")
                 return
-
             if self._state == "start":
                 self._greet()
                 self._state = "wait_bitfield"
@@ -82,7 +85,7 @@ class PeerConnection(threading.Thread):
                     self._state = "need_target"
                 time_span = (datetime.datetime.now() - start_time).total_seconds()
                 if time_span > BITFIELD_TIMEOUT_SEC:
-                    print("EXEPTION: no bitfield was sent from peer " + str(self)
+                    print("EXCEPTION: no bitfield was sent from peer " + str(self)
                           + " " + str(self.peer_address))
                     self.close()
             elif self._state == "need_target":
@@ -113,6 +116,7 @@ class PeerConnection(threading.Thread):
                 message_type, response = self._response_queue.get_nowait()
                 self.react[message_type](response)
                 #print(message_type.encode() + b" " + response + b"\n")
+                #print(message_type)
             except queue.Empty:
                 return
 
@@ -139,7 +143,7 @@ class PeerConnection(threading.Thread):
             self._target_segment_length = min(
                 self._target_piece_length,
                 Messages.piece_segment_length)
-            return  True
+            return True
         return False
 
     def _make_request(self):
@@ -205,8 +209,9 @@ class PeerConnection(threading.Thread):
                 expected_hash = self.loader.get_piece_hash(piece_index)
                 if _hash == expected_hash:
                     self._allocator.save_piece(piece_index, self._storage, self)
-                    print("SAVED GOOD PIECE!!!!!!" + str(self.peer_address))
-                    self._state = "wait_target"
+                    print("SAVED GOOD PIECE!!!!!!" + str(self.peer_address) + \
+                          " " + self.name)
+                    self._state = "need_target"
                     return
                 else:
                     # Если хэш не совпал
@@ -236,7 +241,11 @@ class PeerSender:
 
     def _send_with_length_prefix(self, message: bytes):
         message = int_to_four_bytes_big_endian(len(message)) + message
-        self._socket.send(message)
+        try:
+            self._socket.send(message)
+        except Exception as e:
+            self._client.close()
+            print("EXCEPTION: ", e, threading.currentThread().name)
 
     def try_handshake(self):
         try:
@@ -318,14 +327,24 @@ class PeerReceiver(threading.Thread):
 
     def run(self):
         while True:
-            response_len = bytes_to_int(self._socket.recv(4))
+            try:
+                response_len = bytes_to_int(self._socket.recv(4))
+            except Exception as e:
+                self._connection.close()
+                print("Exception: ", e, self.name)
+                return
             mes_len = str(response_len).encode()
             if not response_len:
                 self._connection.close()
                 return
             response = b""
             while response_len > 0:
-                received = self._socket.recv(min(1024, response_len))
+                try:
+                    received = self._socket.recv(min(1024, response_len))
+                except Exception as e:
+                    self._connection.close()
+                    print("Exception: ", e, self.name)
+                    return
                 if not received:
                     self._connection.close()
                     return

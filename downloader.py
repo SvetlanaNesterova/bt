@@ -27,7 +27,7 @@ def _read_source_from_file(torrent_file_path: str):
 class Loader:
     @staticmethod
     def get_peer_id():
-        return ("-" + "MY" + "0001" + "-" + "123456789012").encode()
+        return ("-" + "MY" + "0001" + "-" + "223456789012").encode()
     # TODO: у разных пользователей разный id
 
     def __init__(self, torrent_file_path: str, save_file_path: str):

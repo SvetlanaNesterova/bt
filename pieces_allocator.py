@@ -108,6 +108,8 @@ class Allocator:
             if other_peer != peer:
                 other_peer.send_have_message(piece_index)
         if self._left_bytes_count == 0:
+            print("WTF")
+            print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
             pass
             # ЗАГРУЗКА ЗАКОНЧЕНА
             # TODO: полная загрузка
