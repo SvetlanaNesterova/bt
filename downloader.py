@@ -40,13 +40,12 @@ class Loader:
         source = _read_source_from_file(torrent_file_path)
         content = BencodeParser.parse(source)[0]
         self.torrent = TorrentMeta(content)
-        ######
-        BencodeTranslator.print_bencode(content)
+        self.allocator = None
         self._trackers = TrackersConnector(self)
-        self.allocator = Allocator(self.torrent, self.get_root_dir_path())
         self.is_working = False
 
     def download(self):
+        self.allocator = Allocator(self.torrent, self.get_root_dir_path())
         self.is_working = True
         self._trackers.start()
 
