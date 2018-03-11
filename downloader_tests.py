@@ -1,6 +1,6 @@
 from unittest import TestCase
 from downloader import Loader
-from tracker_speaker import _parse_peers_ip_and_port
+from tracker import _parse_peers_ip_and_port
 import os
 
 

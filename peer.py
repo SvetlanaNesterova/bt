@@ -1,7 +1,9 @@
 import queue
 import threading
 import socket
+import logging
 import datetime
+import traceback
 from torrent_info import bytes_to_int, int_to_four_bytes_big_endian,\
     Messages, get_sha_1_hash
 
@@ -11,20 +13,34 @@ KEEPALIVE_TIMEOUT_SEC = 120
 
 # TODO: проверить, что и куда протаскивается из классов
 class PeerConnection(threading.Thread):
-    def __init__(self, peer_address: tuple, loader, tracker_connection, allocator):
+    count = 0
+    lock = threading.Lock()
+
+    @staticmethod
+    def get_logger(tracker):
+        with PeerConnection.lock:
+            PeerConnection.count += 1
+            return PeerConnection.count - 1, \
+                   logging.getLogger(tracker.LOG.name + ".PeerConnection.%d"
+                                     % PeerConnection.count)
+
+    def __init__(self, peer_address: tuple, loader, tracker, allocator):
         threading.Thread.__init__(self)
+        self.index, self.LOG = PeerConnection.get_logger(tracker)
         self.peer_address = peer_address
         self.loader = loader
-        self.tracker = tracker_connection  # TODO: отделить пир от трекера;
+        self.tracker = tracker  # TODO: отделить пир от трекера;
                                 # TODO: сделать контроль за количеством пиров
         self._allocator = allocator
         self.react = self._set_reactions()
         self._sender = PeerSender(peer_address, loader, self)
         self._socket = self._sender.get_socket()
         self._receiver = None
+        self._receiver_closed = True
         self._response_queue = queue.Queue()
         self._have_message_queue = queue.Queue()
         self._was_closed = False
+        self._saved_piece = False
 
         self._target_piece_index = None
         self._target_begin = 0
@@ -33,6 +49,7 @@ class PeerConnection(threading.Thread):
         self._storage = b""
         self._state = "start"
         self._received_bitfield = False
+        self._bitfield = None
 
         self.am_choking = True
         self.am_interested = False
@@ -62,38 +79,55 @@ class PeerConnection(threading.Thread):
             self._delete_peer_from_list()
             return
         self._receiver = PeerReceiver(self._socket, self)
+        self._receiver_closed = False
         self._receiver.start()
         start_time = last_keepalive_time = datetime.datetime.now()
-        last_state = self._state
         while True:
-            self._check_input_messages()
-            self._send_haves()
-
-            if self._state != last_state:
-                #print(self._state + self.name)
-                last_state = self._state
-            if self._was_closed:
+            if self._receiver_closed:
                 self._delete_peer_from_list()
                 self._socket.close()
-                print("CLOSED")
+                self.LOG.fatal("Connection with peer '%s' was closed "
+                               "(receiver closed)"
+                               % str(self.peer_address))
+
+                if self._saved_piece:
+                    _thread = PeerConnection(self.peer_address, self.loader,
+                                         self.tracker, self.loader.allocator)
+                    _thread.start()
+                    with self.tracker.lock:
+                        self.tracker.increase_peers_count(_thread)
                 return
+            if self._was_closed:
+                self._delete_peer_from_list()
+                self._receiver.react_connection_closed()
+                self.LOG.fatal("Connection with peer '%s' was closed"
+                               % str(self.peer_address))
+                return
+
+            self._check_input_messages()
+            self._send_haves()
             if self._state == "start":
                 self._greet()
                 self._state = "wait_bitfield"
             elif self._state == "wait_bitfield":
                 if self._received_bitfield:
                     self._state = "need_target"
-                time_span = (datetime.datetime.now() - start_time).total_seconds()
+                time_span = \
+                    (datetime.datetime.now() - start_time).total_seconds()
                 if time_span > BITFIELD_TIMEOUT_SEC:
-                    print("EXCEPTION: no bitfield was sent from peer " + str(self)
-                          + " " + str(self.peer_address))
+                    self.LOG.error("Exception: no bitfield was sent from '%s'"
+                                   % str(self.peer_address))
                     self.close()
+                    continue
             elif self._state == "need_target":
                 if self._try_get_new_target():
                     self._state = "send_request"
                 else:
+                    self._allocator.print_state()
+                    print(self._bitfield)
+                    self.LOG.error("No target for me" + str(self.peer_address))
                     self.close()
-                    #break             ???????????????
+                    continue
             elif self._state == "send_request" and not self.peer_choking:
                 self._make_request()
                 self._state = "wait_piece"
@@ -132,8 +166,10 @@ class PeerConnection(threading.Thread):
         self._have_message_queue.put(piece_index)
 
     def close(self):
-        print("Close")
         self._was_closed = True
+
+    def react_receiver_closing(self):
+        self._receiver_closed = True
 
     def _try_get_new_target(self):
         target = self._allocator.try_get_target_piece_and_length(self)
@@ -173,12 +209,13 @@ class PeerConnection(threading.Thread):
 
     def _react_bitfield(self, response: bytes):
         self._received_bitfield = True
+        self._bitfield = response[1:]
         self._allocator.add_bitfield_info(response[1:], self)
 
     def _react_request(self, response: bytes):
         if len(response) != 13:
-            print("EXCEPTION! len of request peer message is incorrect: " +
-                  response.decode())
+            self.LOG.error("EXCEPTION! len of request peer message is incorrect: " +
+                           response.decode())
 
         piece_index = bytes_to_int(response[1:5])
         begin = bytes_to_int(response[5:9])
@@ -209,18 +246,18 @@ class PeerConnection(threading.Thread):
                 expected_hash = self.loader.get_piece_hash(piece_index)
                 if _hash == expected_hash:
                     self._allocator.save_piece(piece_index, self._storage, self)
-                    print("SAVED GOOD PIECE!!!!!!" + str(self.peer_address) + \
-                          " " + self.name)
+                    self.LOG.info("SAVED GOOD PIECE from '%s'" % str(self.peer_address))
+                    self._saved_piece = True
                     self._state = "need_target"
                     return
                 else:
-                    # Если хэш не совпал
+                    # TODO: Если хэш не совпал
                     pass
 
     def _react_cancel(self, response: bytes):
         if len(response) != 13:
-            print("EXCEPTION! len of cancel peer message is incorrect: " +
-                  response.decode())
+            self.LOG.error("EXCEPTION! len of cancel peer message is incorrect: " +
+                           response.decode())
         piece_index = bytes_to_int(response[1:5])
         begin = bytes_to_int(response[5:9])
         length = bytes_to_int(response[9:13])
@@ -243,15 +280,15 @@ class PeerSender:
         message = int_to_four_bytes_big_endian(len(message)) + message
         try:
             self._socket.send(message)
-        except Exception as e:
+        except Exception as ex:
+            self._client.LOG.error("Exception during sending: " + str(ex))
             self._client.close()
-            print("EXCEPTION: ", e, threading.currentThread().name)
 
     def try_handshake(self):
         try:
             self._socket.connect(self.peer_address)
             self._socket.send(self.handshake_msg)
-            self._socket.settimeout(3)
+            self._socket.settimeout(15)
             data = self._socket.recv(len(self.handshake_msg))
             self._socket.settimeout(None)
             if not data:
@@ -260,11 +297,10 @@ class PeerSender:
                 return False
             # TODO: проверить правильность ip и тд
             return True
-        except WindowsError as e:
-            try:
-                self._socket.close()
-            except Exception:
-                pass
+        except WindowsError as ex:
+            if ex.errno != 10060 and ex.errno != 10061:
+                self._client.LOG.error(
+                    "Exception during sending handsnake " + str(ex))
             return False
 
     # TODO: корректность формы отсылаемых сообщений --- вроде ок
@@ -320,45 +356,75 @@ class PeerSender:
 
 
 class PeerReceiver(threading.Thread):
-    def __init__(self, _socket, connection):
+    def __init__(self, _socket, connection: PeerConnection):
         threading.Thread.__init__(self)
+        self.LOG = logging.getLogger(connection.LOG.name + ".Receiver")
         self._socket = _socket
         self._connection = connection
+        self._was_closed = False
+        self._connection_closed = False
 
     def run(self):
         while True:
+            if self._connection_closed:
+                self._socket.close()
+                self.LOG.fatal("Receiver from peer closed (connection closed)")
+                return
+            if self._was_closed:
+                self._connection.react_receiver_closing()
+                self.LOG.fatal("Receiver from peer closed")
+                return
             try:
-                response_len = bytes_to_int(self._socket.recv(4))
-            except Exception as e:
-                self._connection.close()
-                print("Exception: ", e, self.name)
-                return
-            mes_len = str(response_len).encode()
-            if not response_len:
-                self._connection.close()
-                return
+                # self._socket.settimeout(60)
+                response = self._socket.recv(4)
+                # self._socket.settimeout(None)
+            except Exception as ex:
+                self.LOG.error("Exception during receiving data: '%s' \n%s"
+                               % (ex, traceback.format_exc()))
+                self.close()
+                continue
+            if len(response) == 0:
+                self.LOG.warning("Len-Response was None")
+                self.close()
+                continue
+            response_len = bytes_to_int(response)
+            if response_len == 0:
+                self.LOG.warning("Message with zero length was received")
+                #self.close()
+
             response = b""
             while response_len > 0:
                 try:
+                    # self._socket.settimeout(60)
                     received = self._socket.recv(min(1024, response_len))
-                except Exception as e:
-                    self._connection.close()
-                    print("Exception: ", e, self.name)
-                    return
+                    # self._socket.settimeout(None)
+                except Exception as ex:
+                    self.LOG.error("Exception during receiving data: '%s' \n%s"
+                                   % (ex, traceback.format_exc()))
+                    self.close()
+                    break
                 if not received:
-                    self._connection.close()
-                    return
+                    self.LOG.warning(
+                        "No message was received but it was expected")
+                    self.close()
+                    break
                 response_len -= len(received)
                 response += received
-
-            if len(response) == 0:
-                message_type = "keepalive"
-            elif response[0] > 8:
-                print(b"Unknown message type", response[0], response)
-                # Выход?
-                continue
             else:
-                message_type = Messages.messages_types[response[0]]
-            #print(mes_len + b" Message " + message_type.encode() + b" from " +
-            #      str(self._connection.peer_address).encode())
-            self._connection._response_queue.put((message_type, response))
+                if len(response) == 0:
+                    message_type = "keepalive"
+                elif response[0] > 8:
+                    self.LOG.warning("Unknown message type '%d' in message '%s'"
+                                     % (response[0], response.decode()))
+                    # Выход?
+                    continue
+                else:
+                    message_type = Messages.messages_types[response[0]]
+                if not self._connection_closed:
+                    self._connection._response_queue.put((message_type, response))
+
+    def close(self):
+        self._was_closed = True
+
+    def react_connection_closed(self):
+        self._connection_closed = True
