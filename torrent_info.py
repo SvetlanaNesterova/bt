@@ -6,8 +6,8 @@ from bencode import BencodeTranslator
 
 class TorrentMeta:
     def __init__(self, bencode_source, subprogram_logger_name):
-        self.LOG = logging.getLogger(subprogram_logger_name + ".TorrentMeta")
-        self.LOG.info("Start interpreting of torrent")
+        self.log = logging.getLogger(subprogram_logger_name + ".TorrentMeta")
+        self.log.info("Start interpreting of torrent")
 
         self._announce = self.try_get_key(bencode_source, b"announce")
         self._info = self.try_get_key(bencode_source, b"info")
@@ -35,10 +35,9 @@ class TorrentMeta:
                 self._info[b"pieces"][index:index + 20]
                 for index in range(0, length, 20)]
         except IndexError as ex:
-            tb = traceback.format_exc()
-            self.LOG.error("Exception '%s' "
+            self.log.error("Exception '%s' "
                            "during parsing pieces hashes\n %s"
-                           % (str(ex), tb))
+                           % (str(ex), traceback.format_exc()))
             raise ValueError("Incorrect torrent file: "
                              "not enough pieces hashes count")
 
@@ -77,10 +76,9 @@ class TorrentMeta:
         try:
             return source[key]
         except KeyError as ex:
-            tb = traceback.format_exc()
-            self.LOG.error("Exception '%s' during parsing torrent. "
+            self.log.error("Exception '%s' during parsing torrent. "
                            "Value '%s' is absent \n %s"
-                           % (str(ex), key, tb))
+                           % (str(ex), key, traceback.format_exc()))
             raise ValueError("Incorrect torrent file: "
                              "value '%s' is absent in torrent-file"
                              % key.decode())
@@ -91,15 +89,21 @@ class TorrentMeta:
 
 
 class FileRecord:
-    def __init__(self, record: dict, offset: int, torrent_meta):
+    def __init__(self, record: dict, offset: int, torrent_meta: TorrentMeta):
         self.length = torrent_meta.try_get_key(record, b"length")
-        self.path = torrent_meta.try_get_key(record, b"path")
+        self.local_path = torrent_meta.try_get_key(record, b"path")
+        self.path = None
         self.offset = offset
         if b"md5sum" in record.keys():
             self.md5sum = record[b"md5sum"]
         else:
             self.md5sum = None
         self.is_downloading = True
+        self.pieces_from = offset // torrent_meta.piece_length
+        finish = offset + self.length
+        self.pieces_to = finish // torrent_meta.piece_length - \
+                         (0 if finish % torrent_meta.piece_length > 0 else 1)
+
 
 
 def int_to_four_bytes_big_endian(number):

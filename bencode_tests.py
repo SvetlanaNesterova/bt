@@ -2,6 +2,7 @@ import re
 from unittest import TestCase
 from bencode import BencodeParser, BencodeTranslator
 
+
 class BencodeParserTests(TestCase):
     def test_string_parse_correct(self):
         expected = "abcde"
@@ -216,6 +217,7 @@ class BencodeParserTests(TestCase):
             r'Error in bencode: key: "\w+" is not a string, '
             r'so it cannot be dictionary key'),
                                BencodeParser.parse, source)
+
 
 class BencodeTranslatorTests(TestCase):
     def test_positive_int(self):

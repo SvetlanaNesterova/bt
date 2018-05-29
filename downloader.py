@@ -1,8 +1,9 @@
 import logging
+import time
 from pathlib import Path
 import threading
 
-from bencode import BencodeParser, BencodeTranslator
+from bencode import BencodeParser
 from tracker import TrackersConnector
 from pieces_allocator import Allocator
 from torrent_info import TorrentMeta
@@ -13,7 +14,7 @@ def _check_file_correctness(file_path: str):
     if not path.exists():
         raise FileNotFoundError("No such file '%s'" % str(path))
     if not path.is_file():
-        raise IsADirectoryError("No such file '%s'\n" 
+        raise IsADirectoryError("No such file '%s'\n"
                                 "You should specify file, not directory"
                                 % str(path))
     if path.suffix != ".torrent":
@@ -67,20 +68,35 @@ class Loader(threading.Thread):
         _check_file_correctness(torrent_file_path)
         threading.Thread.__init__(self)
         self.name = "Loader." + self.name
-        self.LOG = Loader._get_logger()
-        self.LOG.info("\n\nStart " + Path(torrent_file_path).name)
+        self.log = Loader._get_logger()
+        self.log.info("\n\nStart " + Path(torrent_file_path).name)
 
         self.torrent_file_path = torrent_file_path
         self.save_directory_path = None
-        source = _read_source_from_file(torrent_file_path)  # raises exceptions
-        content = BencodeParser.parse(source)[0]  # raises exceptions
-        self.LOG.info("INIT. Parsed torrent file successfully. "
+        try:
+            source = _read_source_from_file(torrent_file_path)
+        except Exception as ex:
+            ex = "Exception during reading torrent-file: " + str(ex)
+            self.log.error(ex)
+            print("!!! " + ex)
+            return
+        try:
+            content = BencodeParser.parse(source)[0]
+        except Exception as ex:
+            ex = "Exception during parsing torrent-file: " + str(ex)
+            self.log.error(ex)
+            print("!!! " + ex)
+            return
+        self.log.info("INIT. Parsed torrent file successfully. "
                       "File path: %s" % self.torrent_file_path)
-        self.torrent = TorrentMeta(content, self.LOG.name)
-        self.LOG.info("INIT. Interpreted torrent file successfully")
+        self.torrent = TorrentMeta(content, self.log.name)
+        self.log.info("INIT. Interpreted torrent file successfully")
         self.allocator = None
-        self._trackers = TrackersConnector(self)
+        self.trackers = TrackersConnector(self)
         self.is_working = False
+        self.is_finished = False
+        self.start_download_time = None
+        self.finish_download_time = None
 
     def set_save_path(self, save_path: str):
         if not isinstance(save_path, str):
@@ -88,19 +104,26 @@ class Loader(threading.Thread):
         try:
             _check_directory_correctness(save_path)
         except ValueError as ex:
-            self.LOG.info("Exception (throwed) '%s': wrong save path '%s'"
+            self.log.info("Exception (throwed) '%s': wrong save path '%s'"
                           % (str(ex), save_path))
             raise ex
         self.save_directory_path = save_path
 
     def run(self):
-        self.LOG.info("START Start creating empty files")
+        self.log.info("START Start creating empty files")
+        self.start_download_time = time.time()
         self.allocator = Allocator(self.torrent,
                                    self.save_directory_path,
-                                   self.LOG)
+                                   self.log,
+                                   self)
         self.is_working = True
-        self.LOG.info("START Start connecting with trackers")
-        self._trackers.start()
+        self.log.info("START Start connecting with trackers")
+        self.trackers.start()
+
+    def finish_downloading(self):
+        self.trackers.finish()
+        self.is_finished = True
+        self.finish_download_time = time.time()
 
     def get_piece_hash(self, piece_index: int):
         return self.torrent.pieces_hashes[piece_index]
